@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>US Senate Connection Map 2026</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#0a0e1a; font-family: 'Segoe UI', sans-serif; color:#e0e6f0; overflow:hidden; }
+
+  #header {
+    position:fixed; top:0; left:0; right:0; z-index:100;
+    background:rgba(10,14,26,0.92); backdrop-filter:blur(12px);
+    border-bottom:1px solid rgba(255,255,255,0.08);
+    padding:14px 24px; display:flex; align-items:center; gap:20px;
+  }
+  #header h1 { font-size:18px; font-weight:700; color:#fff; letter-spacing:1px; }
+  #header h1 span { color:#4a9eff; }
+
+  .legend { display:flex; gap:14px; margin-left:auto; flex-wrap:wrap; }
+  .legend-item { display:flex; align-items:center; gap:6px; font-size:12px; }
+  .legend-dot { width:12px; height:12px; border-radius:50%; }
+
+  #filter-bar {
+    position:fixed; top:58px; left:0; right:0; z-index:99;
+    background:rgba(10,14,26,0.85); backdrop-filter:blur(8px);
+    padding:8px 24px; display:flex; gap:10px; align-items:center;
+    border-bottom:1px solid rgba(255,255,255,0.05);
+    flex-wrap:wrap;
+  }
+  .filter-btn {
+    padding:4px 14px; border-radius:20px; border:1px solid rgba(255,255,255,0.15);
+    background:transparent; color:#aab; font-size:12px; cursor:pointer;
+    transition:all 0.2s;
+  }
+  .filter-btn:hover, .filter-btn.active { background:#4a9eff22; border-color:#4a9eff; color:#4a9eff; }
+  #filter-bar label { font-size:12px; color:#889; }
+
+  #svg-container { width:100vw; height:100vh; padding-top:95px; }
+  svg { width:100%; height:100%; }
+
+  .link {
+    stroke-opacity:0.55; stroke-linecap:round;
+    transition:stroke-opacity 0.3s;
+  }
+  .link:hover { stroke-opacity:1; }
+  .link-label {
+    font-size:9px; fill:#aaa; pointer-events:none;
+    text-anchor:middle; dominant-baseline:middle;
+  }
+
+  .node circle {
+    cursor:pointer; stroke-width:2;
+    transition:r 0.2s, filter 0.2s;
+  }
+  .node circle:hover { filter:brightness(1.4); }
+  .node text {
+    font-size:9px; fill:#dde; pointer-events:none;
+    dominant-baseline:central; text-anchor:middle;
+  }
+
+  /* Tooltip */
+  #tooltip {
+    position:fixed; pointer-events:none; opacity:0;
+    background:rgba(12,18,35,0.97); border:1px solid rgba(74,158,255,0.4);
+    border-radius:10px; padding:14px 18px; max-width:280px;
+    transition:opacity 0.2s; z-index:200; box-shadow:0 8px 32px rgba(0,0,0,0.6);
+  }
+  #tooltip h3 { color:#4a9eff; font-size:14px; margin-bottom:8px; }
+  #tooltip .tt-group { font-size:11px; color:#889; margin-bottom:8px; }
+  #tooltip .tt-section { margin-bottom:8px; }
+  #tooltip .tt-section strong { color:#9bf; font-size:11px; display:block; margin-bottom:3px; }
+  #tooltip .tt-section p { font-size:11px; color:#ccc; line-height:1.5; }
+  #tooltip .tt-connections { margin-top:8px; }
+  #tooltip .tt-connections span {
+    display:inline-block; padding:2px 8px; margin:2px;
+    background:rgba(74,158,255,0.15); border:1px solid rgba(74,158,255,0.3);
+    border-radius:10px; font-size:10px; color:#7bc;
+  }
+
+  /* Info panel */
+  #info {
+    position:fixed; bottom:20px; left:20px; z-index:100;
+    background:rgba(12,18,35,0.85); border:1px solid rgba(255,255,255,0.08);
+    border-radius:10px; padding:12px 16px; font-size:11px; color:#778;
+    backdrop-filter:blur(8px);
+  }
+  #info p { margin-bottom:4px; }
+
+  #edge-legend {
+    position:fixed; bottom:20px; right:20px; z-index:100;
+    background:rgba(12,18,35,0.85); border:1px solid rgba(255,255,255,0.08);
+    border-radius:10px; padding:12px 16px; font-size:11px; color:#ccc;
+    backdrop-filter:blur(8px);
+  }
+  #edge-legend h4 { color:#888; margin-bottom:8px; font-size:11px; }
+  .edge-item { display:flex; align-items:center; gap:8px; margin-bottom:5px; }
+  .edge-line { width:30px; height:3px; border-radius:2px; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1>🇺🇸 US Senate <span>Connection Map</span> 2026</h1>
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#e74c3c"></div>MAGA/Populist</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#f39c12"></div>Establishment</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#2ecc71"></div>Moderate/Bipartisan</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#9b59b6"></div>Financial/Wall St.</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#3498db"></div>Democrat</div>
+  </div>
+</div>
+
+<div id="filter-bar">
+  <label>Filter by connection:</label>
+  <button class="filter-btn active" data-type="all">All</button>
+  <button class="filter-btn" data-type="Goldman Sachs">Goldman Sachs</button>
+  <button class="filter-btn" data-type="BlackRock/ESG">BlackRock/ESG Critics</button>
+  <button class="filter-btn" data-type="AIPAC">AIPAC</button>
+  <button class="filter-btn" data-type="Defense">Defense Industry</button>
+  <button class="filter-btn" data-type="Oil & Gas">Oil & Gas</button>
+  <button class="filter-btn" data-type="Religion">Same Religion</button>
+  <button class="filter-btn" data-type="State">Same State</button>
+  <button class="filter-btn" data-type="Mormon">LDS/Mormon Network</button>
+  <button class="filter-btn" data-type="Legal">Legal/Law Background</button>
+</div>
+
+<div id="svg-container"><svg id="graph"></svg></div>
+<div id="tooltip"></div>
+
+<div id="info">
+  <p>🖱️ <b>Drag</b> nodes to rearrange</p>
+  <p>🔍 <b>Scroll</b> to zoom</p>
+  <p>👆 <b>Click</b> node for details</p>
+</div>
+
+<div id="edge-legend">
+  <h4>CONNECTION TYPES</h4>
+  <div class="edge-item"><div class="edge-line" style="background:#f1c40f"></div>Goldman Sachs / Finance</div>
+  <div class="edge-item"><div class="edge-line" style="background:#e74c3c"></div>BlackRock / ESG Critics</div>
+  <div class="edge-item"><div class="edge-line" style="background:#2ecc71"></div>AIPAC Network</div>
+  <div class="edge-item"><div class="edge-line" style="background:#3498db"></div>Defense Industry</div>
+  <div class="edge-item"><div class="edge-line" style="background:#e67e22"></div>Oil & Gas</div>
+  <div class="edge-item"><div class="edge-line" style="background:#9b59b6"></div>Same Religion</div>
+  <div class="edge-item"><div class="edge-line" style="background:#1abc9c"></div>Same State</div>
+  <div class="edge-item"><div class="edge-line" style="background:#95a5a6"></div>LDS/Mormon Network</div>
+  <div class="edge-item"><div class="edge-line" style="background:#fd79a8"></div>Legal/Law Background</div>
+</div>
+
+<script>
+const GROUP_COLOR = {
+  "MAGA/Populist":   "#e74c3c",
+  "Establishment":   "#f39c12",
+  "Moderate":        "#2ecc71",
+  "Financial":       "#9b59b6",
+  "Democrat":        "#3498db"
+};
+
+const senators = [
+  // MAGA/Populist
+  { id:"Ted Cruz",           group:"MAGA/Populist",  state:"TX", religion:"Southern Baptist",   tags:["Goldman Sachs","Legal","AIPAC"],                             bio:"Wife Heidi Cruz is Goldman Sachs MD. Former SCOTUS clerk. Strong corporate tax advocate.", connections:["Goldman Sachs","Legal","AIPAC"] },
+  { id:"Josh Hawley",        group:"MAGA/Populist",  state:"MO", religion:"Evangelical Presbyterian", tags:["Legal","AIPAC","Religion"],                          bio:"Former law professor; Becket Fund for Religious Liberty. Anti-Big Tech, Big Pharma.", connections:["AIPAC","Legal","Religion"] },
+  { id:"Tom Cotton",         group:"MAGA/Populist",  state:"AR", religion:"United Methodist",    tags:["Legal","Defense","McKinsey"],                               bio:"Ex-McKinsey consultant, Army Ranger. Sits on Armed Services. Strong defense hawk.", connections:["Defense","Legal"] },
+  { id:"Marco Rubio",        group:"MAGA/Populist",  state:"FL", religion:"Catholic",            tags:["Goldman Sachs","Legal","Defense"],                           bio:"Former lobbyist ties. Backed by tech, defense, fossil fuel industries.", connections:["Goldman Sachs","Defense","Legal"] },
+  { id:"Rick Scott",         group:"MAGA/Populist",  state:"FL", religion:"Christian",           tags:["Healthcare","Defense","Oil & Gas"],                          bio:"Former CEO Columbia/HCA. One of wealthiest senators ($166M–$744M). Fossil fuel interests.", connections:["Defense","Oil & Gas"] },
+  { id:"Tim Scott",          group:"MAGA/Populist",  state:"SC", religion:"Christian",           tags:["Finance","Insurance"],                                       bio:"Insurance & finance background. Backed by Wall Street. Senate Banking Committee.", connections:["Goldman Sachs"] },
+  { id:"Mike Lee",           group:"MAGA/Populist",  state:"UT", religion:"Mormon",              tags:["Legal","Mormon","BlackRock/ESG"],                            bio:"Former SCOTUS clerk for Justice Alito. Chaired Senate Republican Steering Committee.", connections:["Mormon","Legal","BlackRock/ESG"] },
+  { id:"Ron Johnson",        group:"MAGA/Populist",  state:"WI", religion:"Lutheran",            tags:["BlackRock/ESG","Manufacturing"],                             bio:"Ex-CEO Pacur (plastics). Publicly attacked BlackRock & State Street for ESG investing.", connections:["BlackRock/ESG"] },
+  { id:"JD Vance",           group:"MAGA/Populist",  state:"OH", religion:"Catholic",            tags:["BlackRock/ESG","Venture Capital"],                           bio:"Co-founded Narya Capital; invested in Strive Asset Management (anti-ESG firm). Anti-Big Three.", connections:["BlackRock/ESG"] },
+  { id:"John Barrasso",      group:"MAGA/Populist",  state:"WY", religion:"Presbyterian",        tags:["Oil & Gas","Healthcare"],                                    bio:"Orthopedic surgeon. Senate Whip. Huge oil & gas donor base in Wyoming.", connections:["Oil & Gas"] },
+  { id:"John Boozman",       group:"MAGA/Populist",  state:"AR", religion:"Christian",           tags:["Agriculture","Defense"],                                     bio:"Former optometrist. Agriculture & Veterans Affairs committees. Defense-aligned donors.", connections:["Defense"] },
+  { id:"John Kennedy",       group:"MAGA/Populist",  state:"LA", religion:"Methodist",           tags:["Finance","Legal","Goldman Sachs"],                           bio:"Former Louisiana state treasurer. Law background. Financial sector ties.", connections:["Goldman Sachs","Legal"] },
+  { id:"Joni Ernst",         group:"MAGA/Populist",  state:"IA", religion:"Christian",           tags:["Defense","Agriculture"],                                     bio:"Army National Guard veteran. Senate Armed Services Committee. Pro-defense spending.", connections:["Defense"] },
+  { id:"Josh Hawley",        group:"MAGA/Populist",  state:"MO", religion:"Evangelical Presbyterian", tags:["Legal","AIPAC"],                                      bio:"Becket Fund, anti-Big Tech stance.", connections:["AIPAC","Legal"] },
+  { id:"Katie Britt",        group:"MAGA/Populist",  state:"AL", religion:"Baptist",             tags:["Legal","Goldman Sachs","Defense"],                           bio:"Former CEO Business Council of Alabama. Strong financial sector & defense backing.", connections:["Goldman Sachs","Defense","Legal"] },
+  { id:"Kevin Cramer",       group:"MAGA/Populist",  state:"ND", religion:"Christian",           tags:["Oil & Gas","Agriculture"],                                   bio:"Former energy regulator in North Dakota. Deep ties to oil & gas industry.", connections:["Oil & Gas"] },
+  { id:"Steve Daines",       group:"MAGA/Populist",  state:"MT", religion:"Christian",           tags:["Oil & Gas","Technology"],                                    bio:"Former VP at RightNow Technologies. Strong fossil fuel backing in Montana.", connections:["Oil & Gas"] },
+  { id:"Deb Fischer",        group:"MAGA/Populist",  state:"NE", religion:"Christian",           tags:["Agriculture","Defense"],                                     bio:"Rancher background. Senate Armed Services. Defense contractor contributions.", connections:["Defense","Agriculture"] },
+  { id:"Bill Hagerty",       group:"MAGA/Populist",  state:"TN", religion:"Christian",           tags:["Goldman Sachs","Finance"],                                   bio:"Former US Ambassador to Japan. Investment banking background. Finance sector ties.", connections:["Goldman Sachs"] },
+  { id:"Cindy Hyde-Smith",   group:"MAGA/Populist",  state:"MS", religion:"Baptist",             tags:["Agriculture","Oil & Gas"],                                   bio:"Former Mississippi ag commissioner. Strong agriculture & energy donor base.", connections:["Oil & Gas","Agriculture"] },
+  { id:"James Lankford",     group:"MAGA/Populist",  state:"OK", religion:"Baptist",             tags:["Oil & Gas","Religion"],                                      bio:"Former Baptist youth ministry director. Oklahoma energy interests.", connections:["Oil & Gas","Religion"] },
+  { id:"Roger Marshall",     group:"MAGA/Populist",  state:"KS", religion:"Christian",           tags:["Healthcare","Agriculture"],                                  bio:"Physician (OB/GYN). Agriculture & healthcare tied to Kansas economy.", connections:["Agriculture"] },
+  { id:"Markwayne Mullin",   group:"MAGA/Populist",  state:"OK", religion:"Christian",           tags:["Oil & Gas","Small Business"],                                bio:"Owner of Mullin Plumbing. Oklahoma energy ties.", connections:["Oil & Gas"] },
+  { id:"Jerry Moran",        group:"MAGA/Populist",  state:"KS", religion:"Baptist",             tags:["Agriculture","Defense","Religion"],                          bio:"Chaired Veterans Affairs. Agriculture & defense aligned.", connections:["Defense","Agriculture","Religion"] },
+  { id:"Pete Ricketts",      group:"MAGA/Populist",  state:"NE", religion:"Catholic",            tags:["Finance","Agriculture"],                                     bio:"Former president of TD Ameritrade. Heir to TD Ameritrade fortune. Finance giant.", connections:["Goldman Sachs"] },
+  { id:"Mike Rounds",        group:"MAGA/Populist",  state:"SD", religion:"Catholic",            tags:["Finance","Agriculture","Defense"],                           bio:"Former South Dakota governor. Insurance & banking committee. Defense ties.", connections:["Defense"] },
+  { id:"Eric Schmitt",       group:"MAGA/Populist",  state:"MO", religion:"Christian",           tags:["Legal","BlackRock/ESG"],                                     bio:"Former MO Attorney General. Launched lawsuits against ESG mandates. Anti-BlackRock stance.", connections:["BlackRock/ESG","Legal"] },
+  { id:"Dan Sullivan",       group:"MAGA/Populist",  state:"AK", religion:"Catholic",            tags:["Defense","Oil & Gas","Legal"],                               bio:"Marine Reserve Colonel. Senate Armed Services. Alaska oil & gas champion.", connections:["Defense","Oil & Gas","Legal"] },
+  { id:"Tommy Tuberville",   group:"MAGA/Populist",  state:"AL", religion:"Methodist",           tags:["Defense","Religion"],                                        bio:"Ex-football coach. Senate Armed Services. Blocked military appointments over abortion policy.", connections:["Defense"] },
+  { id:"JD Vance",           group:"MAGA/Populist",  state:"OH", religion:"Catholic",            tags:["BlackRock/ESG","Venture Capital"],                           bio:"Narya Capital founder; Strive Asset Management (anti-ESG).", connections:["BlackRock/ESG"] },
+  { id:"Ted Budd",           group:"MAGA/Populist",  state:"NC", religion:"Christian",           tags:["Finance","Small Business"],                                  bio:"Gun shop owner. House Financial Services background.", connections:["Goldman Sachs"] },
+  { id:"Thom Tillis",        group:"MAGA/Populist",  state:"NC", religion:"Baptist",             tags:["Legal","Finance","Defense"],                                 bio:"Former NC House Speaker. Banking & finance tied. Judiciary Committee.", connections:["Legal","Defense"] },
+  { id:"Scott",              group:"MAGA/Populist",  state:"SC", religion:"Christian",           tags:["Finance"],                                                   bio:"(Folder possibly Tim Scott duplicate) Finance background, SC.", connections:[] },
+
+  // Establishment Leadership
+  { id:"Mitch McConnell",    group:"Establishment",  state:"KY", religion:"Baptist",             tags:["Defense","Finance","Goldman Sachs"],                         bio:"Wife Elaine Chao (shipping/logistics). Tobacco & defense corporate fundraiser. Citizens United champion.", connections:["Goldman Sachs","Defense"] },
+  { id:"John Thune",         group:"Establishment",  state:"SD", religion:"Christian",           tags:["Agriculture","Finance"],                                     bio:"Senate Majority Leader. Agriculture & financial sector ties.", connections:["Goldman Sachs"] },
+  { id:"John Cornyn",        group:"Establishment",  state:"TX", religion:"Baptist",             tags:["Oil & Gas","Defense","Legal"],                               bio:"Former TX AG. Armed Services & Intel committees. Oil & gas + defense.", connections:["Oil & Gas","Defense","Legal"] },
+  { id:"Chuck Grassley",     group:"Establishment",  state:"IA", religion:"Baptist",             tags:["Agriculture","Religion"],                                    bio:"Family farmer in Butler County. Taxpayer watchdog. 90-year-old Senate veteran.", connections:["Agriculture","Religion"] },
+  { id:"Shelley Moore Capito",group:"Establishment", state:"WV", religion:"Presbyterian",        tags:["Oil & Gas","Finance"],                                       bio:"Daughter of WV Gov Arch Moore. Coal & energy state. Senate Appropriations.", connections:["Oil & Gas"] },
+  { id:"Marsha Blackburn",   group:"Establishment",  state:"TN", religion:"Christian",           tags:["Defense","Technology","BlackRock/ESG"],                      bio:"Strong tech critic. Defense-aligned donors. Anti-ESG positions.", connections:["Defense","BlackRock/ESG"] },
+  { id:"Lindsey Graham",     group:"Establishment",  state:"SC", religion:"Southern Baptist",    tags:["Defense","AIPAC","Goldman Sachs"],                           bio:"Personally invested in Vanguard funds. Close ties to defense industry. Strong Israel advocate.", connections:["Goldman Sachs","AIPAC","Defense"] },
+  { id:"Todd Young",         group:"Establishment",  state:"IN", religion:"Christian",           tags:["Defense","Technology","Legal"],                              bio:"Marine Corps veteran. Bipartisan CHIPS Act sponsor (Intel). Defense & tech alignment.", connections:["Defense","Legal"] },
+  { id:"Bill Cassidy",       group:"Establishment",  state:"LA", religion:"Catholic",            tags:["Healthcare","Finance"],                                      bio:"Physician. Voted to convict Trump in 2nd impeachment. Healthcare & finance sector ties.", connections:["Goldman Sachs"] },
+
+  // Moderate/Bipartisan
+  { id:"Susan Collins",      group:"Moderate",       state:"ME", religion:"Catholic",            tags:["Finance","Goldman Sachs","Legal"],                           bio:"Husband Thomas Daffron was lobbyist. Blackstone private equity contributions. Swing-vote centrist.", connections:["Goldman Sachs","Legal"] },
+  { id:"Lisa Murkowski",     group:"Moderate",       state:"AK", religion:"Catholic",            tags:["Oil & Gas","Legal"],                                         bio:"Alaska oil & gas champion. Key bipartisan swing vote. Endorsed Nikki Haley.", connections:["Oil & Gas","Legal"] },
+  { id:"Mitt Romney",        group:"Moderate",       state:"UT", religion:"Mormon",              tags:["Finance","Mormon","Goldman Sachs"],                          bio:"Co-founder Bain Capital. Mormon church ties (like Mike Crapo, Mike Lee). Finance giant.", connections:["Goldman Sachs","Finance","Mormon"] },
+  { id:"Rob Portman",        group:"Moderate",       state:"OH", religion:"Methodist",           tags:["Finance","Legal","Defense"],                                 bio:"Former US Trade Rep & OMB Director. Bipartisan defense & finance. Retired 2023.", connections:["Defense","Legal"] },
+  { id:"Ben Sasse",          group:"Moderate",       state:"NE", religion:"Christian",           tags:["Legal","Agriculture"],                                       bio:"Former Univ of Florida president. Anti-Trump stance. Traditional conservatism.", connections:["Legal"] },
+  { id:"Pat Toomey",         group:"Financial",       state:"PA", religion:"Catholic",           tags:["Finance","Goldman Sachs","BlackRock/ESG"],                   bio:"Former Senate Banking Committee Chair. Wall Street background. Finance-allied. Retired 2023.", connections:["Goldman Sachs","BlackRock/ESG"] },
+
+  // Financial/Wall Street
+  { id:"Mike Crapo",         group:"Financial",      state:"ID", religion:"Mormon",              tags:["Finance","BlackRock/ESG","Mormon","Goldman Sachs"],          bio:"Former Senate Banking Committee Chair. Released 'Big Three' report targeting BlackRock/Vanguard/State Street. Mormon.", connections:["Goldman Sachs","BlackRock/ESG","Mormon"] },
+  { id:"Richard Burr",       group:"Financial",      state:"NC", religion:"Baptist",             tags:["Finance","Healthcare","Goldman Sachs"],                      bio:"Senate Intelligence Committee Chairman. Financial sector deep ties. Healthcare-linked.", connections:["Goldman Sachs"] },
+  { id:"Richard Shelby",     group:"Financial",      state:"AL", religion:"Baptist",             tags:["Finance","Goldman Sachs","Defense"],                         bio:"Longest-serving appropriator. Banking Committee. Goldman Sachs & defense contractor donors.", connections:["Goldman Sachs","Defense"] },
+  { id:"Roy Blunt",          group:"Financial",      state:"MO", religion:"Baptist",             tags:["Finance","Goldman Sachs"],                                   bio:"Post-Senate joined HB Strategies lobbying firm. Republican leadership. Finance & corporate ties.", connections:["Goldman Sachs"] },
+
+  // Democrat
+  { id:"John Fetterman",     group:"Democrat",       state:"PA", religion:"Jewish/Catholic",     tags:["AIPAC","Finance","Legal"],                                   bio:"Former Chubb insurance; 1712 Designs business. AIPAC donor. Advocate to ban stock trading by Congress.", connections:["AIPAC"] },
+];
+
+// Deduplicate senators by id
+const seenIds = new Set();
+const nodes = senators.filter(s => {
+  if (seenIds.has(s.id)) return false;
+  seenIds.add(s.id);
+  return true;
+});
+
+// Build edges based on shared connections
+const connectionTypes = {
+  "Goldman Sachs": { color:"#f1c40f", width:2.5 },
+  "BlackRock/ESG": { color:"#e74c3c", width:2.5 },
+  "AIPAC":         { color:"#2ecc71", width:2 },
+  "Defense":       { color:"#3498db", width:2 },
+  "Oil & Gas":     { color:"#e67e22", width:2 },
+  "Religion":      { color:"#9b59b6", width:1.5 },
+  "Mormon":        { color:"#95a5a6", width:2 },
+  "Legal":         { color:"#fd79a8", width:1.5 },
+  "Agriculture":   { color:"#27ae60", width:1.5 },
+  "State":         { color:"#1abc9c", width:1.5 },
+};
+
+function buildLinks(filterType) {
+  const links = [];
+  const added = new Set();
+
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      const a = nodes[i], b = nodes[j];
+
+      // Same state
+      if ((filterType === "all" || filterType === "State") && a.state === b.state) {
+        const key = `${a.id}|${b.id}|State`;
+        if (!added.has(key)) { added.add(key); links.push({source:a.id, target:b.id, type:"State", label:a.state}); }
+      }
+
+      // Shared religion (only Baptist, Catholic, Mormon flagged)
+      if ((filterType === "all" || filterType === "Religion") && a.religion === b.religion && ["Baptist","Southern Baptist","Catholic","Mormon","Lutheran","Methodist"].includes(a.religion)) {
+        const key = `${a.id}|${b.id}|Religion`;
+        if (!added.has(key)) { added.add(key); links.push({source:a.id, target:b.id, type:"Religion", label:a.religion}); }
+      }
+
+      // Shared connection tags
+      const shared = a.connections.filter(c => b.connections.includes(c));
+      for (const conn of shared) {
+        if (filterType !== "all" && filterType !== conn) continue;
+        const key = `${a.id}|${b.id}|${conn}`;
+        if (!added.has(key)) { added.add(key); links.push({source:a.id, target:b.id, type:conn, label:conn}); }
+      }
+    }
+  }
+  return links;
+}
+
+// D3 setup
+const svg = d3.select("#graph");
+let width = window.innerWidth;
+let height = window.innerHeight - 95;
+
+const g = svg.append("g");
+
+// Zoom
+const zoom = d3.zoom().scaleExtent([0.15, 4]).on("zoom", e => g.attr("transform", e.transform));
+svg.call(zoom);
+
+let simulation, linkSel, nodeSel, labelSel;
+
+function render(filterType = "all") {
+  g.selectAll("*").remove();
+
+  const links = buildLinks(filterType);
+
+  simulation = d3.forceSimulation(nodes)
+    .force("link", d3.forceLink(links).id(d => d.id).distance(d => {
+      if (d.type === "State") return 60;
+      if (d.type === "Mormon") return 70;
+      return 120;
+    }).strength(0.4))
+    .force("charge", d3.forceManyBody().strength(-280))
+    .force("center", d3.forceCenter(width / 2, height / 2))
+    .force("collision", d3.forceCollide(30));
+
+  // Links
+  linkSel = g.append("g").selectAll("line")
+    .data(links).enter().append("line")
+    .attr("class","link")
+    .attr("stroke", d => (connectionTypes[d.type] || {color:"#555"}).color)
+    .attr("stroke-width", d => (connectionTypes[d.type] || {width:1}).width)
+    .attr("stroke-dasharray", d => d.type === "Religion" ? "4,3" : null);
+
+  // Nodes
+  const nodeG = g.append("g").selectAll("g")
+    .data(nodes).enter().append("g")
+    .attr("class","node")
+    .call(d3.drag()
+      .on("start", (e,d) => { if (!e.active) simulation.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
+      .on("drag",  (e,d) => { d.fx=e.x; d.fy=e.y; })
+      .on("end",   (e,d) => { if (!e.active) simulation.alphaTarget(0); d.fx=null; d.fy=null; })
+    )
+    .on("mouseover", showTooltip)
+    .on("mousemove", moveTooltip)
+    .on("mouseout",  hideTooltip);
+
+  nodeG.append("circle")
+    .attr("r", d => {
+      const connCount = links.filter(l => l.source.id === d.id || l.target.id === d.id).length;
+      return Math.max(14, Math.min(28, 14 + connCount * 1.5));
+    })
+    .attr("fill",   d => GROUP_COLOR[d.group] || "#777")
+    .attr("stroke", d => d3.color(GROUP_COLOR[d.group] || "#777").brighter(1.2))
+    .style("filter", "drop-shadow(0 0 6px rgba(0,0,0,0.5))");
+
+  nodeG.append("text")
+    .text(d => d.id.split(" ").pop())  // last name only
+    .attr("dy","0.35em")
+    .style("font-size","8px")
+    .style("fill","#fff")
+    .style("font-weight","600");
+
+  simulation.on("tick", () => {
+    linkSel
+      .attr("x1", d => d.source.x).attr("y1", d => d.source.y)
+      .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+    nodeG.attr("transform", d => `translate(${d.x},${d.y})`);
+  });
+}
+
+function showTooltip(event, d) {
+  const tip = document.getElementById("tooltip");
+  const connLinks = buildLinks("all").filter(l =>
+    (typeof l.source === "object" ? l.source.id : l.source) === d.id ||
+    (typeof l.target === "object" ? l.target.id : l.target) === d.id
+  );
+  const connNames = [...new Set(connLinks.map(l => {
+    const s = typeof l.source === "object" ? l.source.id : l.source;
+    const t = typeof l.target === "object" ? l.target.id : l.target;
+    return s === d.id ? t : s;
+  }))];
+
+  tip.innerHTML = `
+    <h3>${d.id}</h3>
+    <div class="tt-group">${d.group} · ${d.state} · ${d.religion}</div>
+    <div class="tt-section"><strong>Bio</strong><p>${d.bio}</p></div>
+    <div class="tt-section"><strong>Key Connections (${d.connections.join(", ")||"—"})</strong></div>
+    <div class="tt-connections">${connNames.slice(0,10).map(n=>`<span>${n}</span>`).join("")}${connNames.length>10?`<span>+${connNames.length-10} more</span>`:""}</div>
+  `;
+  tip.style.opacity = "1";
+  moveTooltip(event);
+}
+function moveTooltip(event) {
+  const tip = document.getElementById("tooltip");
+  let x = event.clientX + 14, y = event.clientY - 10;
+  if (x + 290 > window.innerWidth)  x = event.clientX - 290;
+  if (y + 200 > window.innerHeight) y = event.clientY - 200;
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+}
+function hideTooltip() { document.getElementById("tooltip").style.opacity = "0"; }
+
+// Filter buttons
+document.querySelectorAll(".filter-btn").forEach(btn => {
+  btn.addEventListener("click", function() {
+    document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+    this.classList.add("active");
+    render(this.dataset.type);
+  });
+});
+
+window.addEventListener("resize", () => {
+  width = window.innerWidth; height = window.innerHeight - 95;
+  if (simulation) simulation.force("center", d3.forceCenter(width/2, height/2)).alpha(0.3).restart();
+});
+
+render("all");
+</script>
+</body>
+</html>
